@@ -1,0 +1,200 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Work Order Scanner (Live)</title>
+<style>
+ *{box-sizing:border-box}
+ body{font-family:"Segoe UI",Arial,sans-serif;background:#0f2036;margin:0;color:#fff;min-height:100vh}
+ .wrap{max-width:640px;margin:0 auto;padding:20px 16px 60px}
+ .status{position:fixed;top:8px;right:10px;font-size:11px;padding:4px 10px;border-radius:20px;background:#26436b;color:#cfe0f2}
+ .status.live{background:#1c6b3f;color:#d7f5e3}
+ .status.off{background:#7a2c2c;color:#ffd9d9}
+ .scanhead{text-align:center;margin-bottom:14px}
+ .scanhead h1{font-size:19px;margin:0 0 4px}
+ .scanhead p{margin:0;font-size:13px;color:#9fb3cc}
+ .scanbox{display:flex;gap:10px;background:#fff;border-radius:12px;padding:10px;box-shadow:0 4px 16px rgba(0,0,0,.3)}
+ .scanbox .ico{font-size:26px;padding:0 6px;align-self:center}
+ #code{flex:1;border:none;font-size:26px;font-family:"Consolas",monospace;padding:8px 6px;outline:none;color:#111}
+ #code::placeholder{color:#b9c2cd;font-size:20px}
+ .go{background:#2e8b57;color:#fff;border:none;border-radius:8px;padding:0 18px;font-size:16px;font-weight:800;cursor:pointer}
+ .hint{text-align:center;font-size:12px;color:#7f96b2;margin-top:8px}
+ .msg{margin-top:20px;text-align:center;font-size:15px;color:#c7d6e8;padding:26px;border:2px dashed #33507a;border-radius:12px}
+ .msg.err{color:#ffd7a6;border-color:#8a5512;background:#2a1e10}
+ .ticket{margin-top:16px;background:#fff;color:#111;border-radius:10px;overflow:hidden;box-shadow:0 6px 22px rgba(0,0,0,.35);font-family:"Consolas","Courier New",monospace}
+ .t-h{text-align:center;border-bottom:2px solid #111;padding:14px 16px 10px}
+ .t-h .store{font-size:11px;letter-spacing:.15em;color:#333}
+ .t-h .title{font-size:22px;font-weight:800;letter-spacing:.22em;margin-top:2px}
+ .t-hdr{padding:12px 18px;font-size:14px;line-height:1.7;border-bottom:1px dashed #7a8592}
+ .t-hdr .r{display:flex;justify-content:space-between}.t-hdr b{font-weight:800}
+ .wo{margin:12px 14px;border:1px solid #cbd3dc;padding:10px 12px;position:relative}
+ .wo.ready{border-left:6px solid #2e8b57}
+ .wo.hold{border-left:6px solid #c98a1a;background:#fffaf0}
+ .wo.done{border-left:6px solid #2e8b57;background:#e7f7ec}
+ .wo.done .ln,.wo.done .gsec{opacity:.5}
+ .stamp{position:absolute;top:8px;right:10px;font-weight:800;font-size:12px;padding:2px 8px;border:2px solid;border-radius:4px}
+ .ready .stamp{color:#1c6b3f;border-color:#1c6b3f}.hold .stamp{color:#8a5512;border-color:#8a5512}
+ .done .stamp{color:#fff;background:#2e8b57;border-color:#2e8b57;font-size:13px;padding:3px 10px}
+ .ln{font-size:14px;line-height:1.75}.ln .k{display:inline-block;width:150px;color:#333}.big{font-weight:800}
+ .gsec{margin-top:6px;border-top:1px dotted #9aa5b2;padding-top:5px}
+ .gsec .lbl{font-size:11px;letter-spacing:.06em;color:#666}.gsec .g{font-size:16px;font-weight:800}
+ .markbtn{width:100%;margin-top:12px;background:#2e8b57;color:#fff;border:none;border-radius:10px;padding:16px;font-size:17px;font-weight:800;cursor:pointer;font-family:"Segoe UI",Arial,sans-serif;letter-spacing:.02em;box-shadow:0 3px 0 #1c6b3f;transition:transform .05s}
+ .markbtn:hover{background:#339a61}
+ .markbtn:active{transform:translateY(3px);box-shadow:none}
+ .markbtn.hold{background:#c98a1a;box-shadow:0 3px 0 #8a5512}
+ .markbtn.hold:hover{background:#dd9a22}
+ .finbar{width:100%;margin-top:12px;background:#1c6b3f;color:#fff;border-radius:10px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;font-family:"Segoe UI",Arial,sans-serif}
+ .finbar .l{font-size:16px;font-weight:800} .finbar .m{font-size:12px;opacity:.9;margin-top:1px}
+ .finbar .u{background:rgba(255,255,255,.18);color:#fff;border:none;border-radius:7px;padding:8px 12px;font-size:12.5px;cursor:pointer}
+ .t-foot{text-align:center;font-size:12px;color:#556;border-top:2px solid #111;padding:10px;margin-top:8px}
+ .recent{margin-top:20px;font-size:12px;color:#7f96b2;text-align:center}.recent a{color:#9fd3b3;cursor:pointer;text-decoration:underline;margin:0 6px}
+ .setup{background:#22344f;border:1px solid #3a5party;border-radius:12px;padding:18px;color:#cfe0f2;font-size:13.5px;line-height:1.6;margin-top:20px}
+ .setup code{background:#0d1a2c;padding:2px 6px;border-radius:4px}
+ .pin{position:fixed;inset:0;background:#0f2036;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:20}
+ .pin input{font-size:34px;text-align:center;width:180px;padding:10px;border-radius:10px;border:none;font-family:monospace}
+ .pin button{margin-top:14px;background:#2e8b57;color:#fff;border:none;border-radius:8px;padding:12px 24px;font-size:16px;font-weight:800;cursor:pointer}
+</style>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+</head><body>
+<div id="conn" class="status">connecting…</div>
+
+<!-- optional PIN gate -->
+<div id="pin" class="pin" style="display:none">
+  <div style="font-size:18px;margin-bottom:14px">Enter shop PIN</div>
+  <input id="pinInput" type="password" inputmode="numeric" autocomplete="off">
+  <button onclick="checkPin()">Enter</button>
+</div>
+
+<div class="wrap">
+ <div class="scanhead"><h1>🧵 Embroidery Work Order — Live</h1><p>Scan the barcode at the bottom of the invoice</p></div>
+ <div class="scanbox">
+   <span class="ico">🔍</span>
+   <input id="code" placeholder="Scan or type invoice #" autocomplete="off">
+   <button class="go" onclick="lookup()">Go</button>
+ </div>
+ <div class="hint">Station: <b id="stationName">—</b> · changes sync live to every PC. Type e.g. <b>59092</b> + Enter.</div>
+ <div id="out"><div class="msg">Waiting for a scan…</div></div>
+ <div class="recent"><a onclick="scan('59092')">try 59092</a> · <a onclick="seedSample()">load sample 59092 into cloud</a></div>
+</div>
+
+<script>
+/* =========================================================================
+   1) PASTE YOUR FIREBASE CONFIG HERE (from Firebase console → Project settings → your web app)
+   ========================================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyCkON0iGuIy0P0jqustjWpID0hEK223Hlg",
+  authDomain: "medical-uniforms-workorders.firebaseapp.com",
+  projectId: "medical-uniforms-workorders",
+  storageBucket: "medical-uniforms-workorders.firebasestorage.app",
+  messagingSenderId: "756297322731",
+  appId: "1:756297322731:web:3f8d9c07823606b6e02eae"
+};
+const SHOP_PIN = "";      // set e.g. "2468" to require a PIN, leave "" for none
+const STATION  = (localStorage.getItem('station') || prompt("Name this station (e.g. Machine 1):","Machine 1") || "Station");
+localStorage.setItem('station', STATION);
+/* ========================================================================= */
+
+var db=null, auth=null, curUnsub=null, curKey=null, curData=null;
+document.getElementById('stationName').textContent = STATION;
+
+function setConn(t,c){ var e=document.getElementById('conn'); e.textContent=t; e.className='status '+(c||''); }
+
+if(firebaseConfig.apiKey==="PASTE_API_KEY"){
+  document.getElementById('out').innerHTML =
+   '<div class="setup"><b>Almost ready — connect your Firebase project.</b><br><br>'+
+   'Open <code>WorkOrderScanner_Firebase.html</code> in a text editor and paste your Firebase web config into the <code>firebaseConfig</code> block near the top, then reload. '+
+   'Full step-by-step is in <b>Firebase Setup Guide.md</b> (same folder).</div>';
+  setConn("not configured","off");
+} else {
+  firebase.initializeApp(firebaseConfig);
+  db=firebase.firestore(); auth=firebase.auth();
+  try{ db.enablePersistence({synchronizeTabs:true}); }catch(e){}
+  auth.signInAnonymously().catch(function(e){ setConn("auth error","off"); });
+  auth.onAuthStateChanged(function(u){ if(u){ setConn("● live","live"); if(SHOP_PIN) gate(); autodemo(); } });
+}
+
+function gate(){ if(sessionStorage.getItem('pinok')==='1') return; document.getElementById('pin').style.display='flex'; document.getElementById('pinInput').focus(); }
+function checkPin(){ if(document.getElementById('pinInput').value===SHOP_PIN){ sessionStorage.setItem('pinok','1'); document.getElementById('pin').style.display='none'; document.getElementById('code').focus(); } else { document.getElementById('pinInput').value=''; } }
+
+function norm(s){ s=(s||"").trim().replace(/[^0-9-]/g,""); var m=s.match(/^0*(\d+)(?:-(\d+))?$/); if(!m)return null; return m[1]+"-"+(m[2]||"1"); }
+function scan(v){ document.getElementById('code').value=v; lookup(); }
+function sel(){ var c=document.getElementById('code'); c.focus(); c.select(); }
+function esc(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;");}
+
+function lookup(){
+  if(!db){ return; }
+  var key=norm(document.getElementById('code').value);
+  var out=document.getElementById('out');
+  if(!key){ out.innerHTML='<div class="msg err">Couldn\'t read that barcode. Try again.</div>'; sel(); return; }
+  if(curUnsub){ curUnsub(); curUnsub=null; }
+  curKey=key;
+  curUnsub = db.collection('workOrders').doc(key).onSnapshot(function(snap){
+    if(!snap.exists){ out.innerHTML='<div class="msg err">Invoice <b>'+key+'</b> isn\'t loaded yet.</div>'; return; }
+    curData=snap.data(); out.innerHTML=render(key,curData);
+  }, function(err){ out.innerHTML='<div class="msg err">Read error: '+esc(err.message)+'</div>'; });
+  sel();
+}
+var OPTIM={};
+function finish(i){
+  OPTIM[curKey]=OPTIM[curKey]||{}; OPTIM[curKey][i]={ t:new Date().toISOString(), by:STATION };
+  if(curData) document.getElementById('out').innerHTML=render(curKey,curData);
+  var o={}; o['finished.'+i]={ t:new Date().toISOString(), by:STATION };
+  db.collection('workOrders').doc(curKey).update(o).catch(function(){});
+}
+function undo(i){
+  OPTIM[curKey]=OPTIM[curKey]||{}; OPTIM[curKey][i]=null;
+  if(curData) document.getElementById('out').innerHTML=render(curKey,curData);
+  var o={}; o['finished.'+i]=firebase.firestore.FieldValue.delete();
+  db.collection('workOrders').doc(curKey).update(o).catch(function(){});
+}
+function render(key,r){
+  var F=Object.assign({}, r.finished||{});
+  var ov=OPTIM[key]||{}; for(var kk in ov){ if(ov[kk]===null){ delete F[kk]; delete F[String(kk)]; } else { F[kk]=ov[kk]; } }
+  var wos=(r.lines||[]).map(function(w,i){
+    var fin=F[i]||F[String(i)];
+    var cls,stamp;
+    if(fin){cls="done";stamp="✓ FINISHED";} else if(w.status==="hold"){cls="hold";stamp="HOLD";} else {cls="ready";stamp="STITCH NOW";}
+    var due=w.due?('<span class="big">'+esc(w.due)+'</span>'):'<span style="color:#8a5512">— special order, not received —</span>';
+    var nameLine=(w.nameReq==="YES")?'<div class="ln"><span class="k">Name Required:</span>YES</div><div class="ln"><span class="k">Enter Name:</span><span class="big">'+esc(w.name)+'</span></div>':'<div class="ln"><span class="k">Name Required:</span>NO</div>';
+    var hold=w.holdNote?'<div style="font-size:12px;color:#8a5512;margin-top:3px">'+esc(w.holdNote)+'</div>':'';
+    var btn = fin
+      ? '<div class="finbar"><div><div class="l">✓ Embroidery finished</div><div class="m">by '+esc(fin.by||'')+' · '+esc((fin.t||'').replace('T',' ').slice(0,16))+'</div></div><button class="u" onclick="undo('+i+')">Undo</button></div>'
+      : '<button class="markbtn'+(w.status==="hold"?' hold':'')+'" onclick="finish('+i+')">✓ Mark embroidery finished</button>';
+    return '<div class="wo '+cls+'"><div class="stamp">'+stamp+'</div>'+
+      '<div class="ln"><span class="k">Due Date:</span>'+due+'</div>'+
+      '<div class="ln"><span class="k">Logo Required:</span>YES</div>'+
+      '<div class="ln"><span class="k">Enter Logo:</span><span class="big">'+esc(w.logo)+'</span></div>'+
+      '<div class="ln"><span class="k">Logo Location:</span>'+esc(w.location)+'</div>'+nameLine+
+      '<div class="gsec"><span class="lbl">********** CUSTOMER GARMENT INFO</span><div class="g">'+esc(w.garment||"—")+'</div>'+hold+'</div>'+btn+'</div>';
+  }).join("");
+  var ndone=(r.lines||[]).filter(function(w,i){return F[i]||F[String(i)];}).length;
+  return '<div class="ticket"><div class="t-h"><div class="store">MEDICAL UNIFORMS — STORE 1</div><div class="title">WORK ORDER</div></div>'+
+    '<div class="t-hdr"><div class="r"><span>Customer:</span><b>'+esc(r.customer)+'</b></div>'+
+    '<div class="r"><span>Phone:</span><b>'+esc(r.phone)+'</b></div>'+
+    '<div class="r"><span>Invoice:</span><b>'+esc(key)+'</b></div>'+
+    '<div class="r"><span>Taken:</span><b>'+esc(r.date)+'</b></div></div>'+wos+
+    '<div class="t-foot">'+(r.lines||[]).length+' logo(s) · '+ndone+' finished · live</div></div>';
+}
+function autodemo(){
+  db.collection("workOrders").doc("59092-1").get().then(function(sn){
+    if(!sn.exists){ return db.collection("workOrders").doc("59092-1").set(SAMPLE59092); }
+  }).then(function(){ scan("59092"); }).catch(function(e){ setConn("err: "+e.code,"off"); });
+}
+var SAMPLE59092={customer:"MICHELLE GALVAN", phone:"(210) 687-5456", acct:"26877-1", date:"8/12/26", station:"107",
+  lines:[
+    {status:"ready", due:"8/19/26", logo:"METHODIST HSPT - 843", location:"Left Chest", nameReq:"NO", name:"", garment:"Buttersoft Khaki XXS top"},
+    {status:"hold", due:"", logo:"METHODIST HSPT - 843", location:"Left Chest", nameReq:"NO", name:"", garment:"Healing Hands top — Khaki, XXS", holdNote:"Special order — Ready 0, not received. Stitch once the top arrives."}
+  ], finished:{}};
+/* one-tap: write the sample invoice into Firestore so you can test end-to-end */
+function seedSample(){
+  if(!db){ alert("Connect Firebase first (paste config)."); return; }
+  db.collection('workOrders').doc('59092-1').set({
+    customer:"MICHELLE GALVAN", phone:"(210) 687-5456", acct:"26877-1", date:"8/12/26", station:"107",
+    lines:[
+      {status:"ready", due:"8/19/26", logo:"METHODIST HSPT - 843", location:"Left Chest", nameReq:"NO", name:"", garment:"Buttersoft Khaki XXS top"},
+      {status:"hold", due:"", logo:"METHODIST HSPT - 843", location:"Left Chest", nameReq:"NO", name:"", garment:"Healing Hands top — Khaki, XXS", holdNote:"Special order — Ready 0, not received. Stitch once the top arrives."}
+    ],
+    finished:{}
+  }).then(function(){ scan('59092'); });
+}
+document.getElementById('code').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); lookup(); }});
+</script>
+</body></html>
