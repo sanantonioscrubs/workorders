@@ -42,6 +42,8 @@
  .finbar{width:100%;margin-top:12px;background:#1c6b3f;color:#fff;border-radius:10px;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;font-family:"Segoe UI",Arial,sans-serif}
  .finbar .l{font-size:16px;font-weight:800} .finbar .m{font-size:12px;opacity:.9;margin-top:1px}
  .finbar .u{background:rgba(255,255,255,.18);color:#fff;border:none;border-radius:7px;padding:8px 12px;font-size:12.5px;cursor:pointer}
+ .lockbtn{width:100%;margin-top:12px;background:#eef1f5;color:#5a6577;border:1px dashed #b9c2cd;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;font-family:"Segoe UI",Arial,sans-serif}
+ .lockbtn:hover{background:#e3e8ee}
  .t-foot{text-align:center;font-size:12px;color:#556;border-top:2px solid #111;padding:10px;margin-top:8px}
  .recent{margin-top:20px;font-size:12px;color:#7f96b2;text-align:center}.recent a{color:#9fd3b3;cursor:pointer;text-decoration:underline;margin:0 6px}
  .setup{background:#22344f;border:1px solid #3a5party;border-radius:12px;padding:18px;color:#cfe0f2;font-size:13.5px;line-height:1.6;margin-top:20px}
@@ -70,7 +72,8 @@
    <input id="code" placeholder="Scan or type invoice #" autocomplete="off">
    <button class="go" onclick="lookup()">Go</button>
  </div>
- <div class="hint">Station: <b id="stationName">—</b> · changes sync live to every PC. Type e.g. <b>59092</b> + Enter.</div>
+ <div class="hint" id="rolebar" style="font-size:13px"></div>
+ <div class="hint" style="margin-top:3px">Changes sync live to every PC · type e.g. <b>59092</b> + Enter</div>
  <div id="out"><div class="msg">Waiting for a scan…</div></div>
  <div class="recent"><a onclick="scan('59092')">try 59092</a> · <a onclick="seedSample()">load sample 59092 into cloud</a></div>
 </div>
@@ -88,12 +91,27 @@ const firebaseConfig = {
   appId: "1:756297322731:web:3f8d9c07823606b6e02eae"
 };
 const SHOP_PIN = "";      // set e.g. "2468" to require a PIN, leave "" for none
-const STATION  = (localStorage.getItem('station') || prompt("Name this station (e.g. Machine 1):","Machine 1") || "Station");
-localStorage.setItem('station', STATION);
+var EMB_CODE = "2580";   // embroiderers enter this ONCE per machine to unlock the Finish button
+var STATION = localStorage.getItem('station') || "";
+function embUnlocked(){ return localStorage.getItem('embUnlocked')==='1'; }
+function unlockEmb(){
+  var c=prompt("Enter the embroidery code to unlock the Finish button:");
+  if(c===null) return;
+  if(String(c).trim()!==EMB_CODE){ alert("Wrong code — ask the shop for the embroidery code."); return; }
+  var nm=prompt("Your name (so we know who finished each piece):", STATION||"");
+  if(nm && nm.trim()){ STATION=nm.trim(); localStorage.setItem('station',STATION); }
+  localStorage.setItem('embUnlocked','1');
+  updateRole(); if(curKey&&curData) document.getElementById('out').innerHTML=render(curKey,curData);
+}
+function lockEmb(){ localStorage.removeItem('embUnlocked'); updateRole(); if(curKey&&curData) document.getElementById('out').innerHTML=render(curKey,curData); }
+function updateRole(){ var e=document.getElementById('rolebar'); if(!e) return;
+  e.innerHTML = embUnlocked()
+    ? '&#9986;&#65039; Embroidery station: <b>'+esc(STATION||'—')+'</b> &nbsp;<a onclick="lockEmb()" style="cursor:pointer;text-decoration:underline;color:#9fb3cc">lock</a>'
+    : '&#128274; View only &nbsp;<a onclick="unlockEmb()" style="cursor:pointer;text-decoration:underline;color:#9fd3b3">I&#39;m the embroiderer &#8594;</a>'; }
 /* ========================================================================= */
 
 var db=null, auth=null, curUnsub=null, curKey=null, curData=null;
-document.getElementById('stationName').textContent = STATION;
+updateRole();
 
 function setConn(t,c){ var e=document.getElementById('conn'); e.textContent=t; e.className='status '+(c||''); }
 
@@ -134,6 +152,7 @@ function lookup(){
 }
 var OPTIM={};
 function finish(i){
+  if(!embUnlocked()){ unlockEmb(); return; }
   OPTIM[curKey]=OPTIM[curKey]||{}; OPTIM[curKey][i]={ t:new Date().toISOString(), by:STATION };
   if(curData) document.getElementById('out').innerHTML=render(curKey,curData);
   var o={}; o['finished.'+i]={ t:new Date().toISOString(), by:STATION };
@@ -157,7 +176,9 @@ function render(key,r){
     var hold=w.holdNote?'<div style="font-size:12px;color:#8a5512;margin-top:3px">'+esc(w.holdNote)+'</div>':'';
     var btn = fin
       ? '<div class="finbar"><div><div class="l">✓ Embroidery finished</div><div class="m">by '+esc(fin.by||'')+' · '+esc((fin.t||'').replace('T',' ').slice(0,16))+'</div></div><button class="u" onclick="undo('+i+')">Undo</button></div>'
-      : '<button class="markbtn'+(w.status==="hold"?' hold':'')+'" onclick="finish('+i+')">✓ Mark embroidery finished</button>';
+      : (embUnlocked()
+          ? '<button class="markbtn'+(w.status==="hold"?' hold':'')+'" onclick="finish('+i+')">✓ Mark embroidery finished</button>'
+          : '<button class="lockbtn" onclick="unlockEmb()">🔒 Embroiderer only — tap to unlock</button>');
     return '<div class="wo '+cls+'"><div class="stamp">'+stamp+'</div>'+
       '<div class="ln"><span class="k">Due Date:</span>'+due+'</div>'+
       '<div class="ln"><span class="k">Logo Required:</span>YES</div>'+
