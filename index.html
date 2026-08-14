@@ -91,11 +91,11 @@
     <div style="font-size:19px;font-weight:800;margin-bottom:8px">📤 Upload reports (manual)</div>
     <div style="font-size:13px;color:#cfe0f2;line-height:1.55">
       Use this if the auto-update isn't running (no internet to me, etc.). Load the POS report and the app builds the cards itself.<br><br>
-      <b>Get the file in the POS:</b><br>
-      1. Reports → <b>Customers</b> → <b>Orders</b><br>
-      2. <b>Open Work Order Items</b> → Stores = <b>All</b> → OK → <b>PDF</b> → Save.<br>
-      3. Choose that PDF below → <b>Load</b>.<br>
-      <span style="color:#9fb3cc">The app reads the PDF and creates every work order. (Excel "Special Orders Ready for Delivery" for received status is accepted too.)</span>
+      <b>In the POS: Reports → Customers → Orders</b><br>
+      1. <b>Open Work Order Items</b> → Stores = <b>All</b> → OK → <b>PDF</b> → Save. <i>(builds the cards)</i><br>
+      2. <b>Special Orders Ready for Delivery</b> → run <b>once for Store 1</b> and <b>once for Store 3</b> (the report only allows one store at a time) → <b>Export → Detail</b> → save both CSVs. <i>(adds phone + received status)</i><br>
+      3. Choose <b>all of those files</b> below (PDF + both CSVs) → <b>Load</b>.<br>
+      <span style="color:#9fb3cc">The app reads the PDF and creates every work order; the CSVs fill in each customer's phone and how many special items have arrived.</span>
     </div>
     <input id="upFile" type="file" accept=".pdf,.csv" multiple style="margin-top:14px;width:100%;color:#cfe0f2;font-size:13px">
     <div id="upResult" style="font-size:13px;margin-top:12px;min-height:18px;line-height:1.5"></div>
