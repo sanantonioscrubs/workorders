@@ -49,6 +49,7 @@
  .itm .imeta{font-size:12px;color:#5a6577;margin-top:2px}
  .itm.iwait{background:#fffaf0;border-color:#f0dcae}
  .itm.irec{background:#eefaf1;border-color:#bfe6cd}
+ .sec{margin:16px 14px 2px;font-size:12px;font-weight:800;letter-spacing:.06em;color:#12365c;text-transform:uppercase;border-bottom:1px solid #e2e7ee;padding-bottom:5px;font-family:"Segoe UI",Arial,sans-serif}
  .t-foot{text-align:center;font-size:12px;color:#556;border-top:2px solid #111;padding:10px;margin-top:8px}
  .recent{margin-top:20px;font-size:12px;color:#7f96b2;text-align:center}.recent a{color:#9fd3b3;cursor:pointer;text-decoration:underline;margin:0 6px}
  .setup{background:#22344f;border:1px solid #3a5party;border-radius:12px;padding:18px;color:#cfe0f2;font-size:13.5px;line-height:1.6;margin-top:20px}
@@ -204,16 +205,16 @@ function render(key,r){
   var ov=OPTIM[key]||{}; for(var kk in ov){ if(ov[kk]===null){ delete F[kk]; delete F[String(kk)]; } else { F[kk]=ov[kk]; } }
   var R=r.received||{};
   var embN=0, embDone=0, specN=0, specIn=0;
-  var wos=(r.lines||[]).map(function(w,i){
+  var items=(r.lines||[]).map(function(w,i){
     var fin=F[i]||F[String(i)];
     var rec=R[i]||R[String(i)];
     if(w.special){ specN++; if(rec) specIn++; }
     if(!w.emb){
       if(w.special){
         var rr = rec ? '<span style="color:#1c6b3f;font-weight:800">✓ Received</span>' : '<span style="color:#8a5512;font-weight:800">⏳ Waiting to arrive</span>';
-        return '<div class="itm '+(rec?'irec':'iwait')+'"><div class="idesc">📦 '+esc(w.desc)+'</div><div class="imeta">Special order &nbsp;·&nbsp; '+rr+'</div></div>';
+        return {emb:false, html:'<div class="itm '+(rec?'irec':'iwait')+'"><div class="idesc">📦 '+esc(w.desc)+'</div><div class="imeta">Special order &nbsp;·&nbsp; '+rr+'</div></div>'};
       }
-      return '<div class="itm"><div class="idesc">🧺 '+esc(w.desc)+'</div><div class="imeta">Purchased · in stock</div></div>';
+      return {emb:false, html:'<div class="itm"><div class="idesc">🧺 '+esc(w.desc)+'</div><div class="imeta">Purchased · in stock</div></div>'};
     }
     embN++; if(fin) embDone++;
     var gated = w.special && !rec;
@@ -227,12 +228,17 @@ function render(key,r){
     else if(gated){ btn='<button class="lockbtn" style="cursor:default;color:#8a5512;border-color:#e0b050;background:#fffaf0">⏳ Waiting for the garment to arrive</button>'; }
     else if(loggedIn()){ btn='<button class="markbtn" onclick="finish('+i+')">✓ Mark embroidery finished</button>'; }
     else { btn='<button class="lockbtn" onclick="openLogin()">🔒 Log in to mark finished</button>'; }
-    return '<div class="wo '+cls+'"><div class="stamp">'+stamp+'</div>'+
+    return {emb:true, html:'<div class="wo '+cls+'"><div class="stamp">'+stamp+'</div>'+
       '<div class="ln"><span class="k">Garment:</span><b>'+esc(w.garment||w.desc||'—')+'</b></div>'+
       '<div class="ln"><span class="k">Due Date:</span>'+due+'</div>'+
       '<div class="ln"><span class="k">Logo:</span><span class="big">'+esc(w.logo)+'</span></div>'+
-      '<div class="ln"><span class="k">Location:</span>'+esc(w.location)+'</div>'+nameLine+specNote+btn+'</div>';
-  }).join("");
+      '<div class="ln"><span class="k">Location:</span>'+esc(w.location)+'</div>'+nameLine+specNote+btn+'</div>'};
+  });
+  var embArr=items.filter(function(x){return x.emb;}).map(function(x){return x.html;});
+  var othArr=items.filter(function(x){return !x.emb;}).map(function(x){return x.html;});
+  var wos='';
+  if(embArr.length){ wos+='<div class="sec">✂️ Embroidery — '+embArr.length+' to stitch</div>'+embArr.join(''); }
+  if(othArr.length){ wos+='<div class="sec">🧺 Other items — no logo</div>'+othArr.join(''); }
   var ndone=embDone;
   return '<div class="ticket"><div class="t-h"><div class="store">MEDICAL UNIFORMS — STORE 1</div><div class="title">WORK ORDER</div></div>'+
     '<div class="t-hdr"><div class="r"><span>Customer:</span><b>'+esc(r.customer)+'</b></div>'+
