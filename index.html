@@ -134,10 +134,10 @@ const firebaseConfig = {
 };
 const SHOP_PIN = "";      // set e.g. "2468" to require a PIN, leave "" for none
 var USHER_HASH = "ae71be479c3b28846af485bde41b1173c0ef5bfaeb8afb655b86c7f318455737"; // sha256 of the password — the real password is never stored anywhere
-var EMP = localStorage.getItem('emp') || "";
+var EMP = "";  // login is in-memory only — never persisted, so every page load/refresh requires the password
 var USERS = {usher:{name:"Usher", h:USHER_HASH}};
-function loggedIn(){ return !!localStorage.getItem('emp'); }
-function logout(){ localStorage.removeItem('emp'); EMP=""; showLogin(); }
+function loggedIn(){ return !!EMP; }
+function logout(){ EMP=""; showLogin(); }
 function sha256(s){ return crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)).then(function(b){ return Array.from(new Uint8Array(b)).map(function(x){return x.toString(16).padStart(2,'0');}).join(''); }); }
 function updateRole(){ var e=document.getElementById('rolebar'); if(!e) return;
   e.innerHTML = loggedIn() ? '&#128100; Signed in: <b>'+esc(EMP)+'</b> &nbsp;<a onclick="logout()" style="cursor:pointer;text-decoration:underline;color:#9fb3cc">log out</a>' : ''; }
@@ -164,7 +164,7 @@ function doLogin(){
   if(!pw){ msg.textContent='Enter your password.'; return; }
   var u=USERS[key]; if(!u){ msg.textContent='Unknown user.'; return; }
   sha256(pw).then(function(h){
-    if(h===u.h){ EMP=u.name; localStorage.setItem('emp',u.name); document.getElementById('liPw').value=''; hideLogin(); }
+    if(h===u.h){ EMP=u.name; document.getElementById('liPw').value=''; hideLogin(); }
     else { msg.textContent='Wrong password.'; }
   }).catch(function(){ msg.textContent='Login error, try again.'; });
 }
