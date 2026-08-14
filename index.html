@@ -245,7 +245,9 @@ function render(key,r){
     var cls,stamp;
     if(fin){cls="done";stamp="✓ FINISHED";} else if(gated){cls="hold";stamp="WAITING";} else {cls="ready";stamp="STITCH NOW";}
     var due=w.due?('<span class="big">'+esc(w.due)+'</span>'):(gated?'<span style="color:#8a5512">— special order, not received —</span>':'<span style="color:#1c6b3f">ready to stitch</span>');
-    var nameLine=(w.nameReq==="YES")?'<div class="ln"><span class="k">Name Required:</span>YES</div><div class="ln"><span class="k">Enter Name:</span><span class="big">'+esc(w.name)+'</span></div>':'<div class="ln"><span class="k">Name Required:</span>NO</div>';
+    var detail='';
+    if(w.logoReq==='YES'||w.logo){ detail+='<div class="ln"><span class="k">Logo:</span><span class="big">'+esc(w.logo)+'</span></div>'+(w.location?'<div class="ln"><span class="k">Logo location:</span>'+esc(w.location)+'</div>':''); }
+    if(w.nameReq==='YES'){ detail+='<div class="ln"><span class="k">Name:</span><span class="big">'+esc(w.name)+'</span></div>'+(w.nameLoc?'<div class="ln"><span class="k">Name location:</span>'+esc(w.nameLoc)+'</div>':'')+(w.font?'<div class="ln"><span class="k">Font:</span>'+esc(w.font)+'</div>':'')+(w.thread?'<div class="ln"><span class="k">Thread:</span>'+esc(w.thread)+'</div>':''); }
     var specNote = w.special ? '<div style="font-size:12px;color:'+(rec?'#1c6b3f':'#8a5512')+';margin-top:4px">'+(rec?'✓ Special-order garment received — ok to stitch':'⏳ Special-order garment — waiting to arrive')+'</div>' : '';
     var btn;
     if(fin){ btn='<div class="finbar"><div><div class="l">✓ Embroidery finished</div><div class="m">by '+esc(fin.by||'')+' · '+esc((fin.t||'').replace('T',' ').slice(0,16))+'</div></div><button class="u" onclick="undo('+i+')">Undo</button></div>'; }
@@ -255,21 +257,22 @@ function render(key,r){
     return {emb:true, html:'<div class="wo '+cls+'"><div class="stamp">'+stamp+'</div>'+
       '<div class="ln"><span class="k">Garment:</span><b>'+esc(w.garment||w.desc||'—')+'</b></div>'+
       '<div class="ln"><span class="k">Due Date:</span>'+due+'</div>'+
-      '<div class="ln"><span class="k">Logo:</span><span class="big">'+esc(w.logo)+'</span></div>'+
-      '<div class="ln"><span class="k">Location:</span>'+esc(w.location)+'</div>'+nameLine+specNote+btn+'</div>'};
+      detail+specNote+btn+'</div>'};
   });
   var embArr=items.filter(function(x){return x.emb;}).map(function(x){return x.html;});
   var othArr=items.filter(function(x){return !x.emb;}).map(function(x){return x.html;});
   var wos='';
   if(embArr.length){ wos+='<div class="sec">✂️ Embroidery — '+embArr.length+' to stitch</div>'+embArr.join(''); }
   if(othArr.length){ wos+='<div class="sec">🧺 Other items — no logo</div>'+othArr.join(''); }
-  var ndone=embDone;
+  var specBanner='';
+  if(r.specialsOpen){ var allin=(r.specialsReady||0)>=r.specialsOpen; specBanner='<div style="margin:10px 14px;padding:8px 10px;border-radius:6px;font-size:13px;font-weight:700;'+(allin?'background:#eefaf1;color:#1c6b3f;border:1px solid #bfe6cd':'background:#fffaf0;color:#8a5512;border:1px solid #f0dcae')+'">'+(allin?'✓ All '+r.specialsOpen+' special-order item(s) received':'⏳ '+(r.specialsReady||0)+' of '+r.specialsOpen+' special-order item(s) received')+'</div>'; }
+  var specFoot = r.specialsOpen ? ' · '+(r.specialsReady||0)+'/'+r.specialsOpen+' special received' : (specN?' · '+specIn+'/'+specN+' special received':'');
   return '<div class="ticket"><div class="t-h"><div class="store">MEDICAL UNIFORMS — STORE 1</div><div class="title">WORK ORDER</div></div>'+
     '<div class="t-hdr"><div class="r"><span>Customer:</span><b>'+esc(r.customer)+'</b></div>'+
     '<div class="r"><span>Phone:</span><b>'+esc(r.phone)+'</b></div>'+
     '<div class="r"><span>Invoice:</span><b>'+esc(key)+'</b></div>'+
-    '<div class="r"><span>Taken:</span><b>'+esc(r.date)+'</b></div></div>'+wos+
-    '<div class="t-foot">'+(r.lines||[]).length+' item(s) · '+embDone+'/'+embN+' stitched'+(specN?' · '+specIn+'/'+specN+' special received':'')+' · live</div></div>';
+    '<div class="r"><span>Taken:</span><b>'+esc(r.date)+'</b></div></div>'+specBanner+wos+
+    '<div class="t-foot">'+(r.lines||[]).length+' item(s) · '+embDone+'/'+embN+' stitched'+specFoot+' · live</div></div>';
 }
 function autodemo(){
   db.collection("workOrders").doc("59092-1").get().then(function(sn){
@@ -291,11 +294,13 @@ function seedSample(){
 /* ---------- Manual upload: read POS "Open Work Order Items" PDF -> work orders ---------- */
 function openUploader(){ var u=document.getElementById('uploader'); if(u) u.style.display='flex'; var r=document.getElementById('upResult'); if(r) r.textContent=''; }
 function closeUploader(){ var u=document.getElementById('uploader'); if(u) u.style.display='none'; }
+function labelish(t){ return /^(Due Date:|LOGO REQUIRED:|NAME REQUIRED:|Logo Location:|Name Location:|Font:|Thread Color:|Line Count:|Invoice Total)/i.test(t) || /^\*+\s*$/.test(t); }
 function pdfRowsToOrders(rowsAll){
-  var descX=378, custX=459, custB=418, orders={}, cur=null, awaitLogo=false;
+  var descX=378, custX=459, custB=418, orders={}, cur=null, awaitLogo=false, awaitName=false;
   for(var ri=0; ri<rowsAll.length; ri++){
     var parts=rowsAll[ri].parts;
     var text=parts.map(function(p){return p.s;}).join(' ').replace(/\s+/g,' ').trim();
+    if(!text) continue;
     if(/Ref No\./i.test(text) && /Customer/i.test(text)){ parts.forEach(function(p){ if(/^Description$/i.test(p.s))descX=p.x; if(/^Customer$/i.test(p.s))custX=p.x; }); custB=(descX+custX)/2; continue; }
     var m=text.match(/^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(\S+-\d+)\s+\d+\s+\d+\s+/);
     if(m){
@@ -306,16 +311,25 @@ function pdfRowsToOrders(rowsAll){
       var desc=parts.filter(function(p){return skuPart&&p.x>skuPart.x&&p.x<custB;}).map(function(p){return p.s;}).join(' ').replace(/\s+/g,' ').trim();
       if(!orders[ref]) orders[ref]={customer:customer, date:dt, lines:[]};
       if(!orders[ref].customer && customer) orders[ref].customer=customer;
-      cur={item:sku, desc:desc, garment:(desc?desc+' ('+sku+')':sku), logo:'', location:'', due:'', nameReq:'NO', special:false, emb:true};
-      orders[ref].lines.push(cur); awaitLogo=false; continue;
+      cur={item:sku, desc:desc, garment:(desc?desc+' ('+sku+')':sku), logo:'', location:'', due:'', logoReq:'NO', nameReq:'NO', name:'', nameLoc:'', font:'', thread:'', special:false, emb:false};
+      orders[ref].lines.push(cur); awaitLogo=false; awaitName=false; continue;
     }
     if(!cur) continue;
-    if(/^Due Date:/i.test(text)){ var d=text.replace(/^Due Date:\s*/i,'').replace(/\s/g,''); cur.due=(d==='//'||d==='')?'':d; }
-    else if(/Enter Logo/i.test(text)){ awaitLogo=true; }
-    else if(awaitLogo && text && !/^Logo Location|^NAME REQUIRED|^LOGO REQUIRED|^\*/i.test(text)){ cur.logo=text.trim(); awaitLogo=false; }
-    else if(/^Logo Location:/i.test(text)){ cur.location=text.replace(/^Logo Location:\s*/i,'').trim(); }
-    else if(/^Name Required:/i.test(text)){ cur.nameReq=/YES/i.test(text)?'YES':'NO'; }
-    else if(/^Enter Name:/i.test(text)){ cur.name=text.replace(/^Enter Name:\s*/i,'').trim(); }
+    if(/^Due Date:/i.test(text)){ var d=text.replace(/^Due Date:\s*/i,'').replace(/\s/g,''); cur.due=(d==='//'||d==='')?'':d; awaitLogo=awaitName=false; }
+    else if(/^LOGO REQUIRED:/i.test(text)){ cur.logoReq=/YES/i.test(text)?'YES':'NO'; if(cur.logoReq==='YES')cur.emb=true; awaitLogo=awaitName=false; }
+    else if(/^NAME REQUIRED:/i.test(text)){ cur.nameReq=/YES/i.test(text)?'YES':'NO'; if(cur.nameReq==='YES')cur.emb=true; awaitLogo=awaitName=false; }
+    else if(/^Logo Location:/i.test(text)){ cur.location=text.replace(/^Logo Location:\s*/i,'').trim(); awaitLogo=awaitName=false; }
+    else if(/^Name Location:/i.test(text)){ cur.nameLoc=text.replace(/^Name Location:\s*/i,'').trim(); awaitLogo=awaitName=false; }
+    else if(/^Font:/i.test(text)){ cur.font=text.replace(/^Font:\s*/i,'').trim(); awaitLogo=awaitName=false; }
+    else if(/^Thread Color:/i.test(text)){ cur.thread=text.replace(/^Thread Color:\s*/i,'').trim(); awaitLogo=awaitName=false; }
+    else if(/Enter Logo/i.test(text)){ awaitLogo=true; awaitName=false; }
+    else if(/(?:\d+(?:st|nd|rd|th) Line|Enter Name)/i.test(text)){ awaitName=true; awaitLogo=false; }
+    else if(/^Line Count:/i.test(text) || /Invoice Total/i.test(text) || /^\*+\s*$/.test(text)){ /* skip */ }
+    else if(/^(Medical Uniforms$|Open Work Order Items$|Page\b|Ref No\.|Date\s)/i.test(text) || /\d{1,2}:\d{2}\s*(AM|PM)$/i.test(text) || /All Stores$/i.test(text) || /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(text)){ /* page header — skip, keep waiting */ }
+    else if(!labelish(text)){
+      if(awaitLogo){ cur.logo=(cur.logo?cur.logo+' ':'')+text.trim(); awaitLogo=false; }
+      else if(awaitName){ cur.name=(cur.name?cur.name+' ':'')+text.trim(); awaitName=false; }
+    }
   }
   return orders;
 }
@@ -331,27 +345,54 @@ function pdfToOrders(buf){
     return seq.then(function(){ return pdfRowsToOrders(rowsAll); });
   });
 }
+function csvRow(line){
+  if(line==null) return [];
+  var out=[], cur='', q=false;
+  for(var i=0;i<line.length;i++){ var c=line[i];
+    if(q){ if(c=='"'){ if(line[i+1]=='"'){cur+='"';i++;} else q=false; } else cur+=c; }
+    else { if(c=='"')q=true; else if(c==','){out.push(cur);cur='';} else cur+=c; }
+  }
+  out.push(cur); return out.map(function(s){return s.trim();});
+}
+function parseSpecialsCsv(txt){
+  var map={}, lines=txt.split(/\r?\n/), hdr=null;
+  for(var i=0;i<lines.length;i++){
+    var row=csvRow(lines[i]); if(!row.length||!row[0]) continue;
+    if(!hdr){ if(/RowType/i.test(row[0])) hdr=row; continue; }
+    if(!/^Detail/i.test(row[0])) continue;
+    var ref=row[2], phone=row[4]||'', open=parseInt(row[5]||'0',10)||0, ready=parseInt(row[6]||'0',10)||0;
+    if(ref) map[ref]={phone:phone, open:open, ready:ready};
+  }
+  return map;
+}
 function processFiles(inp){
   var files=inp && inp.files, res=document.getElementById('upResult');
   if(!files||!files.length){ res.style.color='#ffd7a6'; res.textContent='Choose a file first.'; return; }
   if(!db){ res.style.color='#ffd7a6'; res.textContent='Not connected — try again in a moment.'; return; }
   res.style.color='#cfe0f2'; res.textContent='Reading…';
-  var totalOrders=0, totalLines=0, errs=[], seq=Promise.resolve();
-  for(var i=0;i<files.length;i++){ (function(f){
-    seq=seq.then(function(){
-      if(/\.pdf$/i.test(f.name)){
-        return f.arrayBuffer().then(function(ab){ return pdfToOrders(new Uint8Array(ab)); }).then(function(orders){
-          var refs=Object.keys(orders), w=Promise.resolve();
-          refs.forEach(function(ref){ w=w.then(function(){ var o=orders[ref]; return db.collection('workOrders').doc(ref).set({customer:o.customer, date:o.date||'', lines:o.lines, imported:new Date().toISOString()},{merge:true}).then(function(){ totalOrders++; totalLines+=o.lines.length; }); }); });
-          return w;
-        });
-      } else if(/\.csv$/i.test(f.name)){ errs.push(f.name+': received-Excel sync coming soon'); return; }
-      else { errs.push(f.name+': unsupported file'); return; }
-    }).catch(function(e){ errs.push(f.name+': '+(e.message||e)); });
-  })(files[i]); }
-  seq.then(function(){
+  var fileArr=[].slice.call(files), specials={}, totalOrders=0, totalLines=0, errs=[];
+  var p1=Promise.resolve();
+  fileArr.filter(function(f){return /\.csv$/i.test(f.name);}).forEach(function(f){
+    p1=p1.then(function(){ return f.text().then(function(t){ var mp=parseSpecialsCsv(t); for(var k in mp) specials[k]=mp[k]; }).catch(function(e){ errs.push(f.name+': '+(e.message||e)); }); });
+  });
+  p1.then(function(){
+    var p2=Promise.resolve();
+    fileArr.filter(function(f){return /\.pdf$/i.test(f.name);}).forEach(function(f){
+      p2=p2.then(function(){ return f.arrayBuffer().then(function(ab){ return pdfToOrders(new Uint8Array(ab)); }).then(function(orders){
+        var refs=Object.keys(orders), w=Promise.resolve();
+        refs.forEach(function(ref){ w=w.then(function(){ var o=orders[ref], sp=specials[ref];
+          var doc={customer:o.customer, date:o.date||'', lines:o.lines, imported:new Date().toISOString()};
+          if(sp){ doc.phone=sp.phone; doc.specialsOpen=sp.open; doc.specialsReady=sp.ready; }
+          return db.collection('workOrders').doc(ref).set(doc,{merge:true}).then(function(){ totalOrders++; totalLines+=o.lines.length; });
+        }); });
+        return w;
+      }).catch(function(e){ errs.push(f.name+': '+(e.message||e)); }); });
+    });
+    return p2;
+  }).then(function(){
+    var noPdf=!fileArr.some(function(f){return /\.pdf$/i.test(f.name);});
     res.style.color='#9fd3b3';
-    res.innerHTML='✓ Loaded <b>'+totalOrders+'</b> work orders ('+totalLines+' logos).'+(errs.length?'<br><span style="color:#ffd7a6">'+errs.map(esc).join('<br>')+'</span>':'')+'<br><span style="font-size:12px;color:#9fb3cc">Scan any invoice number to see it.</span>';
+    res.innerHTML=(totalOrders?('✓ Loaded <b>'+totalOrders+'</b> work orders ('+totalLines+' embroidery lines).'):(noPdf?'✓ Read '+Object.keys(specials).length+' special-order statuses (upload the Work Order PDF to build cards).':'No work orders found in that PDF.'))+(errs.length?'<br><span style="color:#ffd7a6">'+errs.map(esc).join('<br>')+'</span>':'')+'<br><span style="font-size:12px;color:#9fb3cc">Scan any invoice number to see it.</span>';
   });
 }
 document.getElementById('code').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); lookup(); }});
