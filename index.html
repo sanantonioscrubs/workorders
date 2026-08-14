@@ -110,7 +110,7 @@ const firebaseConfig = {
 const SHOP_PIN = "";      // set e.g. "2468" to require a PIN, leave "" for none
 var USHER_HASH = "ae71be479c3b28846af485bde41b1173c0ef5bfaeb8afb655b86c7f318455737"; // sha256 of the password — the real password is never stored anywhere
 var EMP = localStorage.getItem('emp') || "";
-var USERS = {};
+var USERS = {usher:{name:"Usher", h:USHER_HASH}};
 function loggedIn(){ return !!localStorage.getItem('emp'); }
 function logout(){ localStorage.removeItem('emp'); EMP=""; showLogin(); }
 function sha256(s){ return crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)).then(function(b){ return Array.from(new Uint8Array(b)).map(function(x){return x.toString(16).padStart(2,'0');}).join(''); }); }
@@ -122,14 +122,14 @@ function fillUsers(){ var sel=document.getElementById('liUser'); if(!sel) return
 function showLogin(){ var L=document.getElementById('login'); if(L) L.style.display='flex'; fillUsers(); var m=document.getElementById('liMsg'); if(m) m.textContent=''; }
 function hideLogin(){ var L=document.getElementById('login'); if(L) L.style.display='none'; updateRole(); if(curKey&&curData) document.getElementById('out').innerHTML=render(curKey,curData); }
 function loadUsers(cb){
-  if(!db){ cb&&cb(); return; }
+  var DEF={usher:{name:"Usher", h:USHER_HASH}};
+  if(!db){ USERS=Object.assign({},DEF,USERS); fillUsers(); cb&&cb(); return; }
   db.collection('workOrders').doc('__users__').get().then(function(s){
-    USERS=(s.exists&&s.data().list)||{};
-    if(Object.keys(USERS).length===0){
-      var seed={usher:{name:"Usher", h:USHER_HASH}};
-      db.collection('workOrders').doc('__users__').set({list:seed}).then(function(){ USERS=seed; cb&&cb(); }).catch(function(){ USERS=seed; cb&&cb(); });
-    } else { cb&&cb(); }
-  }).catch(function(){ cb&&cb(); });
+    var fromDb=(s.exists&&s.data().list)||{};
+    USERS=Object.assign({}, DEF, fromDb);
+    if(!s.exists){ db.collection('workOrders').doc('__users__').set({list:DEF}).catch(function(){}); }
+    fillUsers(); cb&&cb();
+  }).catch(function(){ USERS=Object.assign({},DEF); fillUsers(); cb&&cb(); });
 }
 function doLogin(){
   var key=document.getElementById('liUser').value;
@@ -259,5 +259,6 @@ function seedSample(){
   db.collection('workOrders').doc('59092-1').set(SAMPLE59092).then(function(){ scan('59092'); });
 }
 document.getElementById('code').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); lookup(); }});
+try{ fillUsers(); }catch(e){}
 </script>
 </body></html>
