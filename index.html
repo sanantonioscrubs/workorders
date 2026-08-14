@@ -61,6 +61,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>try{ pdfjsLib.GlobalWorkerOptions.workerSrc="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; }catch(e){}</script>
 </head><body>
 <div id="conn" class="status">connecting…</div>
 
@@ -83,6 +85,27 @@
   </div>
 </div>
 
+<!-- manual upload of POS reports -->
+<div id="uploader" class="pin" style="display:none;z-index:30">
+  <div style="background:#12365c;padding:22px;border-radius:14px;width:430px;max-width:94%;max-height:88vh;overflow:auto;text-align:left">
+    <div style="font-size:19px;font-weight:800;margin-bottom:8px">📤 Upload reports (manual)</div>
+    <div style="font-size:13px;color:#cfe0f2;line-height:1.55">
+      Use this if the auto-update isn't running (no internet to me, etc.). Load the POS report and the app builds the cards itself.<br><br>
+      <b>Get the file in the POS:</b><br>
+      1. Reports → <b>Customers</b> → <b>Orders</b><br>
+      2. <b>Open Work Order Items</b> → Stores = <b>All</b> → OK → <b>PDF</b> → Save.<br>
+      3. Choose that PDF below → <b>Load</b>.<br>
+      <span style="color:#9fb3cc">The app reads the PDF and creates every work order. (Excel "Special Orders Ready for Delivery" for received status is accepted too.)</span>
+    </div>
+    <input id="upFile" type="file" accept=".pdf,.csv" multiple style="margin-top:14px;width:100%;color:#cfe0f2;font-size:13px">
+    <div id="upResult" style="font-size:13px;margin-top:12px;min-height:18px;line-height:1.5"></div>
+    <div style="display:flex;gap:10px;margin-top:14px">
+      <button onclick="processFiles(document.getElementById('upFile'))" style="flex:1;background:#2e8b57;color:#fff;border:none;border-radius:8px;padding:13px;font-size:15px;font-weight:800;cursor:pointer">Load</button>
+      <button onclick="closeUploader()" style="background:none;border:1px solid #33507a;color:#cfe0f2;border-radius:8px;padding:13px 16px;cursor:pointer">Close</button>
+    </div>
+  </div>
+</div>
+
 <div class="wrap">
  <div class="scanhead"><h1>🧵 Embroidery Work Order — Live</h1><p>Scan the barcode at the bottom of the invoice</p></div>
  <div class="scanbox">
@@ -92,6 +115,7 @@
  </div>
  <div class="hint" id="rolebar" style="font-size:13px"></div>
  <div class="hint" style="margin-top:3px">Changes sync live to every PC · type e.g. <b>59092</b> + Enter</div>
+ <div style="text-align:center;margin-top:10px"><button onclick="openUploader()" style="background:#22344f;color:#cfe0f2;border:1px solid #33507a;border-radius:8px;padding:9px 16px;font-size:13px;cursor:pointer;font-weight:600">📤 Upload reports (manual)</button></div>
  <div id="out"><div class="msg">Waiting for a scan…</div></div>
  <div class="recent"><a onclick="scan('59092')">try 59092</a> · <a onclick="seedSample()">load sample 59092 into cloud</a></div>
 </div>
@@ -263,6 +287,72 @@ var SAMPLE59092={customer:"MICHELLE GALVAN", phone:"(210) 687-5456", acct:"26877
 function seedSample(){
   if(!db){ alert("Connect Firebase first."); return; }
   db.collection('workOrders').doc('59092-1').set(SAMPLE59092).then(function(){ scan('59092'); });
+}
+/* ---------- Manual upload: read POS "Open Work Order Items" PDF -> work orders ---------- */
+function openUploader(){ var u=document.getElementById('uploader'); if(u) u.style.display='flex'; var r=document.getElementById('upResult'); if(r) r.textContent=''; }
+function closeUploader(){ var u=document.getElementById('uploader'); if(u) u.style.display='none'; }
+function pdfRowsToOrders(rowsAll){
+  var descX=378, custX=459, custB=418, orders={}, cur=null, awaitLogo=false;
+  for(var ri=0; ri<rowsAll.length; ri++){
+    var parts=rowsAll[ri].parts;
+    var text=parts.map(function(p){return p.s;}).join(' ').replace(/\s+/g,' ').trim();
+    if(/Ref No\./i.test(text) && /Customer/i.test(text)){ parts.forEach(function(p){ if(/^Description$/i.test(p.s))descX=p.x; if(/^Customer$/i.test(p.s))custX=p.x; }); custB=(descX+custX)/2; continue; }
+    var m=text.match(/^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(\S+-\d+)\s+\d+\s+\d+\s+/);
+    if(m){
+      var ref=m[2], dt=m[1], skuPart=null;
+      for(var k=0;k<parts.length;k++){ if(/^[A-Z]{2,4}-[A-Z0-9]/.test(parts[k].s)){ skuPart=parts[k]; break; } }
+      var sku=skuPart?skuPart.s:'';
+      var customer=parts.filter(function(p){return p.x>=custB;}).map(function(p){return p.s;}).join(' ').replace(/\s+/g,' ').trim();
+      var desc=parts.filter(function(p){return skuPart&&p.x>skuPart.x&&p.x<custB;}).map(function(p){return p.s;}).join(' ').replace(/\s+/g,' ').trim();
+      if(!orders[ref]) orders[ref]={customer:customer, date:dt, lines:[]};
+      if(!orders[ref].customer && customer) orders[ref].customer=customer;
+      cur={item:sku, desc:desc, garment:(desc?desc+' ('+sku+')':sku), logo:'', location:'', due:'', nameReq:'NO', special:false, emb:true};
+      orders[ref].lines.push(cur); awaitLogo=false; continue;
+    }
+    if(!cur) continue;
+    if(/^Due Date:/i.test(text)){ var d=text.replace(/^Due Date:\s*/i,'').replace(/\s/g,''); cur.due=(d==='//'||d==='')?'':d; }
+    else if(/Enter Logo/i.test(text)){ awaitLogo=true; }
+    else if(awaitLogo && text && !/^Logo Location|^NAME REQUIRED|^LOGO REQUIRED|^\*/i.test(text)){ cur.logo=text.trim(); awaitLogo=false; }
+    else if(/^Logo Location:/i.test(text)){ cur.location=text.replace(/^Logo Location:\s*/i,'').trim(); }
+    else if(/^Name Required:/i.test(text)){ cur.nameReq=/YES/i.test(text)?'YES':'NO'; }
+    else if(/^Enter Name:/i.test(text)){ cur.name=text.replace(/^Enter Name:\s*/i,'').trim(); }
+  }
+  return orders;
+}
+function pdfToOrders(buf){
+  return pdfjsLib.getDocument({data:buf}).promise.then(function(pdf){
+    var rowsAll=[], seq=Promise.resolve();
+    for(var p=1;p<=pdf.numPages;p++){ (function(pn){ seq=seq.then(function(){ return pdf.getPage(pn).then(function(page){ return page.getTextContent().then(function(tc){
+      var rows=[];
+      tc.items.forEach(function(it){ if(!it.str||!it.str.trim())return; var y=Math.round(it.transform[5]); var r=null; for(var k=0;k<rows.length;k++){ if(Math.abs(rows[k].y-y)<=2){r=rows[k];break;} } if(!r){r={y:y,parts:[]};rows.push(r);} r.parts.push({x:it.transform[4],s:it.str}); });
+      rows.sort(function(a,b){return b.y-a.y;});
+      rows.forEach(function(r){ r.parts.sort(function(a,b){return a.x-b.x;}); rowsAll.push(r); });
+    }); }); }); })(p); }
+    return seq.then(function(){ return pdfRowsToOrders(rowsAll); });
+  });
+}
+function processFiles(inp){
+  var files=inp && inp.files, res=document.getElementById('upResult');
+  if(!files||!files.length){ res.style.color='#ffd7a6'; res.textContent='Choose a file first.'; return; }
+  if(!db){ res.style.color='#ffd7a6'; res.textContent='Not connected — try again in a moment.'; return; }
+  res.style.color='#cfe0f2'; res.textContent='Reading…';
+  var totalOrders=0, totalLines=0, errs=[], seq=Promise.resolve();
+  for(var i=0;i<files.length;i++){ (function(f){
+    seq=seq.then(function(){
+      if(/\.pdf$/i.test(f.name)){
+        return f.arrayBuffer().then(function(ab){ return pdfToOrders(new Uint8Array(ab)); }).then(function(orders){
+          var refs=Object.keys(orders), w=Promise.resolve();
+          refs.forEach(function(ref){ w=w.then(function(){ var o=orders[ref]; return db.collection('workOrders').doc(ref).set({customer:o.customer, date:o.date||'', lines:o.lines, imported:new Date().toISOString()},{merge:true}).then(function(){ totalOrders++; totalLines+=o.lines.length; }); }); });
+          return w;
+        });
+      } else if(/\.csv$/i.test(f.name)){ errs.push(f.name+': received-Excel sync coming soon'); return; }
+      else { errs.push(f.name+': unsupported file'); return; }
+    }).catch(function(e){ errs.push(f.name+': '+(e.message||e)); });
+  })(files[i]); }
+  seq.then(function(){
+    res.style.color='#9fd3b3';
+    res.innerHTML='✓ Loaded <b>'+totalOrders+'</b> work orders ('+totalLines+' logos).'+(errs.length?'<br><span style="color:#ffd7a6">'+errs.map(esc).join('<br>')+'</span>':'')+'<br><span style="font-size:12px;color:#9fb3cc">Scan any invoice number to see it.</span>';
+  });
 }
 document.getElementById('code').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); lookup(); }});
 try{ fillUsers(); }catch(e){}
