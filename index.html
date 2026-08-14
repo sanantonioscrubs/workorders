@@ -342,8 +342,42 @@ function pdfToOrders(buf){
       rows.sort(function(a,b){return b.y-a.y;});
       rows.forEach(function(r){ r.parts.sort(function(a,b){return a.x-b.x;}); rowsAll.push(r); });
     }); }); }); })(p); }
-    return seq.then(function(){ return pdfRowsToOrders(rowsAll); });
+    return seq.then(function(){
+      var joined=rowsAll.map(function(r){return r.parts.map(function(p){return p.s;}).join(' ');}).join(' ');
+      if(/Open Work Order Items/i.test(joined)) return pdfRowsToOrders(rowsAll);
+      return receiptRowsToOrders(rowsAll); // Epson sale receipt
+    });
   });
+}
+function receiptRowsToOrders(rowsAll){
+  var ref='', cust='', phone='', date='', lines=[], cur=null, awaitLogo=false, awaitName=false;
+  var texts=rowsAll.map(function(r){ return r.parts.map(function(p){return p.s;}).join(' ').replace(/\s+/g,' ').trim(); });
+  for(var i=0;i<texts.length;i++){ var t=texts[i]; if(!t) continue;
+    var m=t.match(/(\d{3,6}-\d+)\s+(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(\d{3,6}-\d+)/);
+    if(m){ date=m[2]; ref=m[3]; }
+    if(/^Sold To$/i.test(t)){ cust=(texts[i+1]||'').trim(); var pm=(texts[i+2]||'').match(/\(?\d{3}\)?[\s-]?\d{3}-?\d{4}/); if(pm) phone=pm[0]; }
+    if(/^\d{8}\s+/.test(t)){
+      var rest=t.replace(/^\d{8}\s+/,'');
+      var skuM=rest.match(/([A-Z]{2,4}-[A-Z0-9\-]+)/); var sku=skuM?skuM[1]:'';
+      var star=rest.split('*'); var name=star.length>=3?star.slice(2).join('*'):rest; name=name.replace(/\s+[0-9].*$/,'').trim();
+      cur={item:sku, desc:name, garment:name+(sku?' ('+sku+')':''), logo:'', location:'', due:'', logoReq:'NO', nameReq:'NO', name:'', nameLoc:'', font:'', thread:'', special:/^\d{8}\s+S\s/.test(t), emb:/^EMB-/i.test(sku)};
+      if(!/^EMB-/i.test(sku) && !/^MISC/i.test(sku)) lines.push(cur); // skip EMB service + misc lines; keep garments
+      awaitLogo=awaitName=false; continue;
+    }
+    if(!cur) continue;
+    if(/^Due Date:/i.test(t)){ var d=t.replace(/^Due Date:\s*/i,'').replace(/\s/g,''); cur.due=(d==='//'||!d)?'':d; }
+    else if(/^LOGO REQUIRED:/i.test(t)){ cur.logoReq=/YES/i.test(t)?'YES':'NO'; if(cur.logoReq==='YES')cur.emb=true; awaitLogo=awaitName=false; }
+    else if(/^NAME REQUIRED:/i.test(t)){ cur.nameReq=/YES/i.test(t)?'YES':'NO'; if(cur.nameReq==='YES')cur.emb=true; awaitLogo=awaitName=false; }
+    else if(/Enter Logo/i.test(t)){ awaitLogo=true; awaitName=false; }
+    else if(/Enter Name|1st Line|2nd Line/i.test(t)){ awaitName=true; awaitLogo=false; }
+    else if(/^Logo Location:/i.test(t)){ cur.location=t.replace(/^Logo Location:\s*/i,'').trim(); }
+    else if(/^Name Location:/i.test(t)){ cur.nameLoc=t.replace(/^Name Location:\s*/i,'').trim(); }
+    else if(/^Font:/i.test(t)){ cur.font=t.replace(/^Font:\s*/i,'').trim(); }
+    else if(/^Thread Color:/i.test(t)){ cur.thread=t.replace(/^Thread Color:\s*/i,'').trim(); }
+    else if(awaitLogo && !/List Price|Discount|Freight|Sub Total|Delivered By|^\d/.test(t)){ cur.logo=(cur.logo?cur.logo+' ':'')+t.trim(); awaitLogo=false; }
+    else if(awaitName && !/List Price|Discount/.test(t)){ cur.name=(cur.name?cur.name+' ':'')+t.trim(); awaitName=false; }
+  }
+  var orders={}; if(ref) orders[ref]={customer:cust, phone:phone, date:date, lines:lines}; return orders;
 }
 function csvRow(line){
   if(line==null) return [];
@@ -382,6 +416,7 @@ function processFiles(inp){
         var refs=Object.keys(orders), w=Promise.resolve();
         refs.forEach(function(ref){ w=w.then(function(){ var o=orders[ref], sp=specials[ref];
           var doc={customer:o.customer, date:o.date||'', lines:o.lines, imported:new Date().toISOString()};
+          if(o.phone) doc.phone=o.phone;
           if(sp){ doc.phone=sp.phone; doc.specialsOpen=sp.open; doc.specialsReady=sp.ready; }
           return db.collection('workOrders').doc(ref).set(doc,{merge:true}).then(function(){ totalOrders++; totalLines+=o.lines.length; });
         }); });
