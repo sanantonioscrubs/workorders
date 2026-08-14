@@ -70,19 +70,15 @@
   <button onclick="checkPin()">Enter</button>
 </div>
 
-<!-- employee login -->
-<div id="login" class="pin" style="display:none">
-  <div style="background:#12365c;padding:24px;border-radius:14px;width:320px;max-width:92%">
-    <div style="font-size:19px;font-weight:700;margin-bottom:4px">Employee log in</div>
-    <div style="font-size:12.5px;color:#9fb3cc;margin-bottom:14px">Log in once — this device stays signed in.</div>
-    <input id="liName" placeholder="Your name" autocomplete="off" style="width:100%;font-size:18px;padding:11px;border-radius:8px;border:none;margin-bottom:10px;box-sizing:border-box">
-    <input id="liPin" type="password" inputmode="numeric" placeholder="Your PIN" autocomplete="off" style="width:100%;font-size:18px;padding:11px;border-radius:8px;border:none;box-sizing:border-box">
-    <div id="liSetupRow" style="display:none;margin-top:10px"><input id="liSetup" type="password" inputmode="numeric" placeholder="Shop setup code (first time only)" style="width:100%;font-size:16px;padding:11px;border-radius:8px;border:none;box-sizing:border-box"></div>
+<!-- master login gate -->
+<div id="login" class="pin" style="display:flex">
+  <div style="background:#12365c;padding:26px;border-radius:14px;width:330px;max-width:92%">
+    <div style="font-size:22px;font-weight:800;margin-bottom:2px">🧵 Work Orders</div>
+    <div style="font-size:13px;color:#9fb3cc;margin-bottom:16px">Sign in to continue</div>
+    <select id="liUser" style="width:100%;font-size:17px;padding:12px;border-radius:8px;border:none;margin-bottom:10px;box-sizing:border-box"><option value="">— select your name —</option></select>
+    <input id="liPw" type="password" placeholder="Password" autocomplete="off" style="width:100%;font-size:17px;padding:12px;border-radius:8px;border:none;box-sizing:border-box" onkeydown="if(event.key==='Enter')doLogin()">
     <div id="liMsg" style="color:#ffd7a6;font-size:13px;min-height:18px;margin-top:8px"></div>
-    <div style="display:flex;gap:10px;margin-top:8px">
-      <button onclick="doLogin()" style="flex:1;background:#2e8b57;color:#fff;border:none;border-radius:8px;padding:13px;font-size:16px;font-weight:800;cursor:pointer">Log in</button>
-      <button onclick="closeLogin()" style="background:none;border:1px solid #33507a;color:#cfe0f2;border-radius:8px;padding:13px 16px;cursor:pointer">Cancel</button>
-    </div>
+    <button onclick="doLogin()" style="width:100%;background:#2e8b57;color:#fff;border:none;border-radius:8px;padding:14px;font-size:16px;font-weight:800;cursor:pointer;margin-top:6px">Sign in</button>
   </div>
 </div>
 
@@ -112,46 +108,41 @@ const firebaseConfig = {
   appId: "1:756297322731:web:3f8d9c07823606b6e02eae"
 };
 const SHOP_PIN = "";      // set e.g. "2468" to require a PIN, leave "" for none
-var SETUP_CODE = "2580"; // one-time code to CREATE a new employee login; the manager gives this to staff
+var USHER_HASH = "ae71be479c3b28846af485bde41b1173c0ef5bfaeb8afb655b86c7f318455737"; // sha256 of the password — the real password is never stored anywhere
 var EMP = localStorage.getItem('emp') || "";
+var USERS = {};
 function loggedIn(){ return !!localStorage.getItem('emp'); }
-function logout(){ localStorage.removeItem('emp'); EMP=""; updateRole(); if(curKey&&curData) document.getElementById('out').innerHTML=render(curKey,curData); }
+function logout(){ localStorage.removeItem('emp'); EMP=""; showLogin(); }
+function sha256(s){ return crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)).then(function(b){ return Array.from(new Uint8Array(b)).map(function(x){return x.toString(16).padStart(2,'0');}).join(''); }); }
 function updateRole(){ var e=document.getElementById('rolebar'); if(!e) return;
-  e.innerHTML = loggedIn()
-    ? '&#128100; Signed in: <b>'+esc(EMP)+'</b> &nbsp;<a onclick="logout()" style="cursor:pointer;text-decoration:underline;color:#9fb3cc">log out</a>'
-    : '<a onclick="openLogin()" style="cursor:pointer;text-decoration:underline;color:#9fd3b3">&#128100; Log in to mark items finished &#8594;</a>'; }
-function openLogin(){ var L=document.getElementById('login'); if(!L) return; L.style.display='flex'; document.getElementById('liSetupRow').style.display='none'; document.getElementById('liMsg').textContent=''; document.getElementById('liName').focus(); }
-function closeLogin(){ var L=document.getElementById('login'); if(L) L.style.display='none'; }
-function empKey(n){ return (n||'').toLowerCase().replace(/[^a-z0-9]/g,''); }
-function doLogin(){
-  var name=(document.getElementById('liName').value||'').trim();
-  var pin=(document.getElementById('liPin').value||'').trim();
-  var setup=(document.getElementById('liSetup').value||'').trim();
-  var msg=document.getElementById('liMsg');
-  if(!name||!pin){ msg.textContent='Enter your name and a PIN.'; return; }
-  if(!db){ msg.textContent='Still connecting — try again in a moment.'; return; }
-  var key=empKey(name);
-  db.collection('workOrders').doc('__staff__').get().then(function(s){
-    var emps=(s.exists&&s.data().emps)||{};
-    var rec=emps[key];
-    if(rec){
-      if(String(rec.pin)===pin){ finishLogin(rec.name||name); }
-      else { msg.textContent='Wrong PIN for '+esc(rec.name||name)+'.'; }
-    } else {
-      if(document.getElementById('liSetupRow').style.display==='none'){
-        document.getElementById('liSetupRow').style.display='block';
-        msg.textContent='New name — enter the shop setup code to create your login.';
-        document.getElementById('liSetup').focus(); return;
-      }
-      if(setup!==SETUP_CODE){ msg.textContent='Wrong setup code.'; return; }
-      var o={}; o['emps.'+key]={name:name, pin:pin, created:new Date().toISOString()};
-      db.collection('workOrders').doc('__staff__').set({emps:{}},{merge:true}).then(function(){
-        return db.collection('workOrders').doc('__staff__').update(o);
-      }).then(function(){ finishLogin(name); }).catch(function(e){ msg.textContent='Error: '+(e.code||e.message); });
-    }
-  }).catch(function(e){ msg.textContent='Error: '+(e.code||e.message); });
+  e.innerHTML = loggedIn() ? '&#128100; Signed in: <b>'+esc(EMP)+'</b> &nbsp;<a onclick="logout()" style="cursor:pointer;text-decoration:underline;color:#9fb3cc">log out</a>' : ''; }
+function openLogin(){ showLogin(); }
+function fillUsers(){ var sel=document.getElementById('liUser'); if(!sel) return; var keys=Object.keys(USERS);
+  sel.innerHTML='<option value="">— select your name —</option>'+keys.map(function(k){return '<option value="'+k+'">'+esc(USERS[k].name)+'</option>';}).join(''); }
+function showLogin(){ var L=document.getElementById('login'); if(L) L.style.display='flex'; fillUsers(); var m=document.getElementById('liMsg'); if(m) m.textContent=''; }
+function hideLogin(){ var L=document.getElementById('login'); if(L) L.style.display='none'; updateRole(); if(curKey&&curData) document.getElementById('out').innerHTML=render(curKey,curData); }
+function loadUsers(cb){
+  if(!db){ cb&&cb(); return; }
+  db.collection('workOrders').doc('__users__').get().then(function(s){
+    USERS=(s.exists&&s.data().list)||{};
+    if(Object.keys(USERS).length===0){
+      var seed={usher:{name:"Usher", h:USHER_HASH}};
+      db.collection('workOrders').doc('__users__').set({list:seed}).then(function(){ USERS=seed; cb&&cb(); }).catch(function(){ USERS=seed; cb&&cb(); });
+    } else { cb&&cb(); }
+  }).catch(function(){ cb&&cb(); });
 }
-function finishLogin(name){ EMP=name; localStorage.setItem('emp',name); closeLogin(); updateRole(); if(curKey&&curData) document.getElementById('out').innerHTML=render(curKey,curData); }
+function doLogin(){
+  var key=document.getElementById('liUser').value;
+  var pw=document.getElementById('liPw').value||'';
+  var msg=document.getElementById('liMsg');
+  if(!key){ msg.textContent='Pick your name.'; return; }
+  if(!pw){ msg.textContent='Enter your password.'; return; }
+  var u=USERS[key]; if(!u){ msg.textContent='Unknown user.'; return; }
+  sha256(pw).then(function(h){
+    if(h===u.h){ EMP=u.name; localStorage.setItem('emp',u.name); document.getElementById('liPw').value=''; hideLogin(); }
+    else { msg.textContent='Wrong password.'; }
+  }).catch(function(){ msg.textContent='Login error, try again.'; });
+}
 /* ========================================================================= */
 
 var db=null, auth=null, curUnsub=null, curKey=null, curData=null;
@@ -170,7 +161,7 @@ if(firebaseConfig.apiKey==="PASTE_API_KEY"){
   db=firebase.firestore(); auth=firebase.auth();
   try{ db.enablePersistence({synchronizeTabs:true}); }catch(e){}
   auth.signInAnonymously().catch(function(e){ setConn("auth error","off"); });
-  auth.onAuthStateChanged(function(u){ if(u){ setConn("● live","live"); if(SHOP_PIN) gate(); autodemo(); } });
+  auth.onAuthStateChanged(function(u){ if(u){ setConn("● live","live"); loadUsers(function(){ if(loggedIn()){ hideLogin(); } else { showLogin(); } }); autodemo(); } });
 }
 
 function gate(){ if(sessionStorage.getItem('pinok')==='1') return; document.getElementById('pin').style.display='flex'; document.getElementById('pinInput').focus(); }
