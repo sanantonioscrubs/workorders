@@ -115,7 +115,7 @@
  </div>
  <div class="hint" id="rolebar" style="font-size:13px"></div>
  <div class="hint" style="margin-top:3px">Changes sync live to every PC · type e.g. <b>59092</b> + Enter</div>
- <div style="text-align:center;margin-top:10px"><button onclick="openUploader()" style="background:#22344f;color:#cfe0f2;border:1px solid #33507a;border-radius:8px;padding:9px 16px;font-size:13px;cursor:pointer;font-weight:600">📤 Upload reports (manual)</button></div>
+ <div style="text-align:center;margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button onclick="showAll()" style="background:#2e8b57;color:#fff;border:none;border-radius:8px;padding:9px 16px;font-size:13px;cursor:pointer;font-weight:700">📋 All open orders</button><button onclick="openUploader()" style="background:#22344f;color:#cfe0f2;border:1px solid #33507a;border-radius:8px;padding:9px 16px;font-size:13px;cursor:pointer;font-weight:600">📤 Upload reports (manual)</button></div>
  <div id="out"><div class="msg">Waiting for a scan…</div></div>
  <div class="recent"><a onclick="scan('59092')">try 59092</a> · <a onclick="seedSample()">load sample 59092 into cloud</a></div>
 </div>
@@ -394,6 +394,31 @@ function processFiles(inp){
     res.style.color='#9fd3b3';
     res.innerHTML=(totalOrders?('✓ Loaded <b>'+totalOrders+'</b> work orders ('+totalLines+' embroidery lines).'):(noPdf?'✓ Read '+Object.keys(specials).length+' special-order statuses (upload the Work Order PDF to build cards).':'No work orders found in that PDF.'))+(errs.length?'<br><span style="color:#ffd7a6">'+errs.map(esc).join('<br>')+'</span>':'')+'<br><span style="font-size:12px;color:#9fb3cc">Scan any invoice number to see it.</span>';
   });
+}
+function showAll(){
+  var out=document.getElementById('out');
+  if(!db){ out.innerHTML='<div class="msg err">Not connected yet — try again in a moment.</div>'; return; }
+  if(curUnsub){ curUnsub(); curUnsub=null; } curKey=null;
+  out.innerHTML='<div class="msg">Loading all orders…</div>';
+  db.collection('workOrders').get().then(function(qs){
+    var rows=[];
+    qs.forEach(function(d){ if(d.id==='__users__') return; var r=d.data(); if(!r||!r.lines) return;
+      var F=r.finished||{}; var emb=0, done=0;
+      (r.lines||[]).forEach(function(w,i){ if(w.emb){ emb++; if(F[i]||F[String(i)]) done++; } });
+      rows.push({ref:d.id, cust:r.customer||'', date:r.date||'', emb:emb, done:done, so:r.specialsOpen||0, sr:r.specialsReady||0}); });
+    rows.sort(function(a,b){ return (b.date||'').localeCompare(a.date||'')||a.ref.localeCompare(b.ref); });
+    if(!rows.length){ out.innerHTML='<div class="msg">No orders loaded yet.</div>'; return; }
+    var h='<div class="ticket"><div class="t-h"><div class="title" style="font-size:17px">OPEN ORDERS ('+rows.length+')</div></div>';
+    rows.forEach(function(r){
+      var allDone=r.emb>0 && r.done>=r.emb;
+      var spec = r.so ? (r.sr>=r.so?' · ✓ specials in':' · ⏳ '+r.sr+'/'+r.so+' specials') : '';
+      h+='<div class="itm" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center" onclick="scan(\''+r.ref+'\')">'+
+         '<div><div class="idesc">'+esc(r.cust)+'</div><div class="imeta">#'+esc(r.ref)+' · '+esc(r.date)+spec+'</div></div>'+
+         '<div style="text-align:right;font-weight:800;font-size:13px;color:'+(allDone?'#1c6b3f':'#8a5512')+'">'+(allDone?'✓ done':r.done+'/'+r.emb+' stitched')+'</div></div>';
+    });
+    h+='</div>';
+    out.innerHTML=h;
+  }).catch(function(e){ out.innerHTML='<div class="msg err">Couldn\'t load: '+esc(e.message)+'</div>'; });
 }
 document.getElementById('code').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); lookup(); }});
 try{ fillUsers(); }catch(e){}
