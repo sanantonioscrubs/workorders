@@ -44,6 +44,11 @@
  .finbar .u{background:rgba(255,255,255,.18);color:#fff;border:none;border-radius:7px;padding:8px 12px;font-size:12.5px;cursor:pointer}
  .lockbtn{width:100%;margin-top:12px;background:#eef1f5;color:#5a6577;border:1px dashed #b9c2cd;border-radius:10px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;font-family:"Segoe UI",Arial,sans-serif}
  .lockbtn:hover{background:#e3e8ee}
+ .itm{margin:8px 14px;border:1px solid #e2e7ee;border-radius:8px;padding:9px 12px;background:#fafbfc;font-family:"Segoe UI",Arial,sans-serif}
+ .itm .idesc{font-size:14px;font-weight:700;color:#1b2430}
+ .itm .imeta{font-size:12px;color:#5a6577;margin-top:2px}
+ .itm.iwait{background:#fffaf0;border-color:#f0dcae}
+ .itm.irec{background:#eefaf1;border-color:#bfe6cd}
  .t-foot{text-align:center;font-size:12px;color:#556;border-top:2px solid #111;padding:10px;margin-top:8px}
  .recent{margin-top:20px;font-size:12px;color:#7f96b2;text-align:center}.recent a{color:#9fd3b3;cursor:pointer;text-decoration:underline;margin:0 6px}
  .setup{background:#22344f;border:1px solid #3a5party;border-radius:12px;padding:18px;color:#cfe0f2;font-size:13.5px;line-height:1.6;margin-top:20px}
@@ -206,54 +211,61 @@ function undo(i){
 function render(key,r){
   var F=Object.assign({}, r.finished||{});
   var ov=OPTIM[key]||{}; for(var kk in ov){ if(ov[kk]===null){ delete F[kk]; delete F[String(kk)]; } else { F[kk]=ov[kk]; } }
+  var R=r.received||{};
+  var embN=0, embDone=0, specN=0, specIn=0;
   var wos=(r.lines||[]).map(function(w,i){
     var fin=F[i]||F[String(i)];
+    var rec=R[i]||R[String(i)];
+    if(w.special){ specN++; if(rec) specIn++; }
+    if(!w.emb){
+      if(w.special){
+        var rr = rec ? '<span style="color:#1c6b3f;font-weight:800">✓ Received</span>' : '<span style="color:#8a5512;font-weight:800">⏳ Waiting to arrive</span>';
+        return '<div class="itm '+(rec?'irec':'iwait')+'"><div class="idesc">📦 '+esc(w.desc)+'</div><div class="imeta">Special order &nbsp;·&nbsp; '+rr+'</div></div>';
+      }
+      return '<div class="itm"><div class="idesc">🧺 '+esc(w.desc)+'</div><div class="imeta">Purchased · in stock</div></div>';
+    }
+    embN++; if(fin) embDone++;
+    var gated = w.special && !rec;
     var cls,stamp;
-    if(fin){cls="done";stamp="✓ FINISHED";} else if(w.status==="hold"){cls="hold";stamp="HOLD";} else {cls="ready";stamp="STITCH NOW";}
-    var due=w.due?('<span class="big">'+esc(w.due)+'</span>'):'<span style="color:#8a5512">— special order, not received —</span>';
+    if(fin){cls="done";stamp="✓ FINISHED";} else if(gated){cls="hold";stamp="WAITING";} else {cls="ready";stamp="STITCH NOW";}
+    var due=w.due?('<span class="big">'+esc(w.due)+'</span>'):(gated?'<span style="color:#8a5512">— special order, not received —</span>':'<span style="color:#1c6b3f">ready to stitch</span>');
     var nameLine=(w.nameReq==="YES")?'<div class="ln"><span class="k">Name Required:</span>YES</div><div class="ln"><span class="k">Enter Name:</span><span class="big">'+esc(w.name)+'</span></div>':'<div class="ln"><span class="k">Name Required:</span>NO</div>';
-    var hold=w.holdNote?'<div style="font-size:12px;color:#8a5512;margin-top:3px">'+esc(w.holdNote)+'</div>':'';
-    var btn = fin
-      ? '<div class="finbar"><div><div class="l">✓ Embroidery finished</div><div class="m">by '+esc(fin.by||'')+' · '+esc((fin.t||'').replace('T',' ').slice(0,16))+'</div></div><button class="u" onclick="undo('+i+')">Undo</button></div>'
-      : (loggedIn()
-          ? '<button class="markbtn'+(w.status==="hold"?' hold':'')+'" onclick="finish('+i+')">✓ Mark embroidery finished</button>'
-          : '<button class="lockbtn" onclick="openLogin()">🔒 Log in to mark finished</button>');
+    var specNote = w.special ? '<div style="font-size:12px;color:'+(rec?'#1c6b3f':'#8a5512')+';margin-top:4px">'+(rec?'✓ Special-order garment received — ok to stitch':'⏳ Special-order garment — waiting to arrive')+'</div>' : '';
+    var btn;
+    if(fin){ btn='<div class="finbar"><div><div class="l">✓ Embroidery finished</div><div class="m">by '+esc(fin.by||'')+' · '+esc((fin.t||'').replace('T',' ').slice(0,16))+'</div></div><button class="u" onclick="undo('+i+')">Undo</button></div>'; }
+    else if(gated){ btn='<button class="lockbtn" style="cursor:default;color:#8a5512;border-color:#e0b050;background:#fffaf0">⏳ Waiting for the garment to arrive</button>'; }
+    else if(loggedIn()){ btn='<button class="markbtn" onclick="finish('+i+')">✓ Mark embroidery finished</button>'; }
+    else { btn='<button class="lockbtn" onclick="openLogin()">🔒 Log in to mark finished</button>'; }
     return '<div class="wo '+cls+'"><div class="stamp">'+stamp+'</div>'+
+      '<div class="ln"><span class="k">Garment:</span><b>'+esc(w.garment||w.desc||'—')+'</b></div>'+
       '<div class="ln"><span class="k">Due Date:</span>'+due+'</div>'+
-      '<div class="ln"><span class="k">Logo Required:</span>YES</div>'+
-      '<div class="ln"><span class="k">Enter Logo:</span><span class="big">'+esc(w.logo)+'</span></div>'+
-      '<div class="ln"><span class="k">Logo Location:</span>'+esc(w.location)+'</div>'+nameLine+
-      '<div class="gsec"><span class="lbl">********** CUSTOMER GARMENT INFO</span><div class="g">'+esc(w.garment||"—")+'</div>'+hold+'</div>'+btn+'</div>';
+      '<div class="ln"><span class="k">Logo:</span><span class="big">'+esc(w.logo)+'</span></div>'+
+      '<div class="ln"><span class="k">Location:</span>'+esc(w.location)+'</div>'+nameLine+specNote+btn+'</div>';
   }).join("");
-  var ndone=(r.lines||[]).filter(function(w,i){return F[i]||F[String(i)];}).length;
+  var ndone=embDone;
   return '<div class="ticket"><div class="t-h"><div class="store">MEDICAL UNIFORMS — STORE 1</div><div class="title">WORK ORDER</div></div>'+
     '<div class="t-hdr"><div class="r"><span>Customer:</span><b>'+esc(r.customer)+'</b></div>'+
     '<div class="r"><span>Phone:</span><b>'+esc(r.phone)+'</b></div>'+
     '<div class="r"><span>Invoice:</span><b>'+esc(key)+'</b></div>'+
     '<div class="r"><span>Taken:</span><b>'+esc(r.date)+'</b></div></div>'+wos+
-    '<div class="t-foot">'+(r.lines||[]).length+' logo(s) · '+ndone+' finished · live</div></div>';
+    '<div class="t-foot">'+(r.lines||[]).length+' item(s) · '+embDone+'/'+embN+' stitched'+(specN?' · '+specIn+'/'+specN+' special received':'')+' · live</div></div>';
 }
 function autodemo(){
   db.collection("workOrders").doc("59092-1").get().then(function(sn){
-    if(!sn.exists){ return db.collection("workOrders").doc("59092-1").set(SAMPLE59092); }
+    var need = !sn.exists || !(sn.data().lines && sn.data().lines[0] && ('emb' in sn.data().lines[0]));
+    if(need){ return db.collection("workOrders").doc("59092-1").set(SAMPLE59092); }
   }).then(function(){ scan("59092"); }).catch(function(e){ setConn("err: "+e.code,"off"); });
 }
-var SAMPLE59092={customer:"MICHELLE GALVAN", phone:"(210) 687-5456", acct:"26877-1", date:"8/12/26", station:"107",
+var SAMPLE59092={customer:"MICHELLE GALVAN", phone:"(210) 687-5456", acct:"26877-1", date:"8/12/26",
   lines:[
-    {status:"ready", due:"8/19/26", logo:"METHODIST HSPT - 843", location:"Left Chest", nameReq:"NO", name:"", garment:"Buttersoft Khaki XXS top"},
-    {status:"hold", due:"", logo:"METHODIST HSPT - 843", location:"Left Chest", nameReq:"NO", name:"", garment:"Healing Hands top — Khaki, XXS", holdNote:"Special order — Ready 0, not received. Stitch once the top arrives."}
-  ], finished:{}};
+    {desc:"Cherokee pant — Black, XXS", special:false, emb:false},
+    {desc:"Buttersoft top — Khaki, XXS (customer's own)", special:false, emb:true, logo:"METHODIST HSPT - 843", location:"Left Chest", nameReq:"NO", name:"", due:"8/19/26", garment:"Buttersoft Khaki XXS top"},
+    {desc:"Healing Hands top — Khaki, XXS", special:true, emb:true, logo:"METHODIST HSPT - 843", location:"Left Chest", nameReq:"NO", name:"", garment:"Healing Hands top — Khaki, XXS"}
+  ], finished:{}, received:{}};
 /* one-tap: write the sample invoice into Firestore so you can test end-to-end */
 function seedSample(){
-  if(!db){ alert("Connect Firebase first (paste config)."); return; }
-  db.collection('workOrders').doc('59092-1').set({
-    customer:"MICHELLE GALVAN", phone:"(210) 687-5456", acct:"26877-1", date:"8/12/26", station:"107",
-    lines:[
-      {status:"ready", due:"8/19/26", logo:"METHODIST HSPT - 843", location:"Left Chest", nameReq:"NO", name:"", garment:"Buttersoft Khaki XXS top"},
-      {status:"hold", due:"", logo:"METHODIST HSPT - 843", location:"Left Chest", nameReq:"NO", name:"", garment:"Healing Hands top — Khaki, XXS", holdNote:"Special order — Ready 0, not received. Stitch once the top arrives."}
-    ],
-    finished:{}
-  }).then(function(){ scan('59092'); });
+  if(!db){ alert("Connect Firebase first."); return; }
+  db.collection('workOrders').doc('59092-1').set(SAMPLE59092).then(function(){ scan('59092'); });
 }
 document.getElementById('code').addEventListener('keydown',function(e){ if(e.key==='Enter'){ e.preventDefault(); lookup(); }});
 </script>
