@@ -186,7 +186,7 @@ if(firebaseConfig.apiKey==="PASTE_API_KEY"){
   db=firebase.firestore(); auth=firebase.auth();
   try{ db.enablePersistence({synchronizeTabs:true}); }catch(e){}
   auth.signInAnonymously().catch(function(e){ setConn("auth error","off"); });
-  auth.onAuthStateChanged(function(u){ if(u){ setConn("● live","live"); loadUsers(function(){ if(loggedIn()){ hideLogin(); } else { showLogin(); } }); autodemo(); } });
+  auth.onAuthStateChanged(function(u){ if(u){ setConn("● live","live"); loadUsers(function(){ if(loggedIn()){ hideLogin(); } else { showLogin(); } }); } });
 }
 
 function gate(){ if(sessionStorage.getItem('pinok')==='1') return; document.getElementById('pin').style.display='flex'; document.getElementById('pinInput').focus(); }
